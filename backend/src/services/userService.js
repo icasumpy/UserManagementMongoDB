@@ -1,13 +1,13 @@
 const bcrypt = require('bcrypt');
 const User = require('../models/User');
+const cloudinary = require('../config/cloudinary');
+const emailVerificationService = require('./emailVerificationService');
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EMAIL_MAX_LENGTH = 254;
 const NAME_MAX_LENGTH = 100;
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_BYTES = 72;
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_IMAGE_STRING_BYTES = 14 * 1024 * 1024;
 const USER_FIELDS = ['email', 'matkhau', 'hoten', 'hinhanh'];
 
 class UserServiceError extends Error {
@@ -49,26 +49,22 @@ function validateName(value) {
 
 function validateImage(value) {
   if (value === '') return '';
-  if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') > MAX_IMAGE_STRING_BYTES) {
-    fail(400, 'Ảnh không hợp lệ hoặc vượt quá dung lượng cho phép.');
+  if (typeof value !== 'string' || !cloudinary.publicIdFromUrl(value)) {
+    fail(400, 'Ảnh phải là URL HTTPS hợp lệ trong thư mục Cloudinary dành cho ảnh đại diện.');
   }
-
-  const match = value.match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
-  if (!match || match[2].length % 4 !== 0) fail(400, 'Ảnh chỉ hỗ trợ JPEG, PNG hoặc WebP hợp lệ.');
-
-  const [, format, encoded] = match;
-  const imageBytes = Buffer.from(encoded, 'base64');
-  if (imageBytes.length === 0 || imageBytes.length > MAX_IMAGE_BYTES || imageBytes.toString('base64') !== encoded) {
-    fail(400, 'Ảnh vượt quá dung lượng 10 MB hoặc dữ liệu Base64 không hợp lệ.');
-  }
-
-  const isJpeg = format === 'jpeg' && imageBytes[0] === 0xff && imageBytes[1] === 0xd8 && imageBytes[2] === 0xff;
-  const isPng = format === 'png' && imageBytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
-  const isWebp = format === 'webp'
-    && imageBytes.toString('ascii', 0, 4) === 'RIFF'
-    && imageBytes.toString('ascii', 8, 12) === 'WEBP';
-  if (!isJpeg && !isPng && !isWebp) fail(400, 'Nội dung ảnh không khớp với định dạng đã khai báo.');
   return value;
+}
+
+async function deleteCloudinaryImage(url) {
+  if (!cloudinary.publicIdFromUrl(url)) return;
+  try {
+    const result = await cloudinary.deleteAvatarByUrl(url);
+    if (result.result !== 'ok' && result.result !== 'not found') {
+      console.error('[cloudinary] Avatar cleanup did not complete. Details omitted.');
+    }
+  } catch (error) {
+    console.error(`[cloudinary] Avatar cleanup failed (${error?.name || 'Error'}). Details omitted.`);
+  }
 }
 
 function rejectUnknownFields(input) {
@@ -150,9 +146,13 @@ async function getUser(id) {
 
 async function createUser(input) {
   const data = normalizeCreateInput(input);
+  if (!await emailVerificationService.isEmailVerified(data.email)) {
+    fail(403, 'Email phải được xác thực OTP trước khi tạo người dùng.', 'EMAIL_NOT_VERIFIED');
+  }
   data.matkhau = await bcrypt.hash(data.matkhau, 12);
   try {
     const user = await User.create(data);
+    await emailVerificationService.consumeVerification(data.email);
     return toPublicUser(user);
   } catch (error) {
     translateDatabaseError(error);
@@ -164,22 +164,38 @@ async function updateUser(id, input) {
   const update = normalizeUpdateInput(input);
   if (update.matkhau) update.matkhau = await bcrypt.hash(update.matkhau, 12);
   try {
-    const user = await User.findByIdAndUpdate(id, { $set: update }, {
+    const existing = await User.findById(id).select('_id email hinhanh').lean();
+    if (!existing) fail(404, 'User not found.');
+
+    const emailChanged = Object.hasOwn(update, 'email') && update.email !== existing.email;
+    if (emailChanged) {
+      if (await User.exists({ email: update.email, _id: { $ne: existing._id } })) {
+        fail(409, 'Email is already in use.');
+      }
+      if (!await emailVerificationService.isEmailVerified(update.email)) {
+        fail(403, 'New email must be verified by OTP before updating.');
+      }
+    }
+
+    // Include the stored email in the write condition to reject stale concurrent requests.
+    const user = await User.findOneAndUpdate({ _id: existing._id, email: existing.email }, { $set: update }, {
       returnDocument: 'after',
       runValidators: true,
       projection: '_id email hoten hinhanh',
     }).lean();
-    if (!user) fail(404, 'Không tìm thấy người dùng.');
+    if (!user) fail(409, 'This user was changed by another request. Reload and retry.');
+    if (emailChanged) await emailVerificationService.consumeVerification(update.email);
+    if (Object.hasOwn(update, 'hinhanh') && existing.hinhanh !== user.hinhanh) await deleteCloudinaryImage(existing.hinhanh);
     return toPublicUser(user);
   } catch (error) {
     translateDatabaseError(error);
   }
 }
-
 async function deleteUser(id) {
   validateId(id);
   const user = await User.findByIdAndDelete(id).select('_id email hoten hinhanh').lean();
   if (!user) fail(404, 'Không tìm thấy người dùng.');
+  await deleteCloudinaryImage(user.hinhanh);
   return toPublicUser(user);
 }
 

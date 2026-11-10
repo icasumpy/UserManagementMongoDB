@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const healthRoutes = require('./routes/healthRoutes');
 const adminAuthRoutes = require('./routes/adminAuthRoutes');
+const emailOtpRoutes = require('./routes/emailOtpRoutes');
 const userRoutes = require('./routes/userRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const { allowedOrigins } = require('./config/env');
@@ -18,6 +19,7 @@ app.use(cors({
 app.use(express.json({ limit: '15mb' }));
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', adminAuthRoutes);
+app.use('/api/auth/email', emailOtpRoutes);
 app.use('/api/users', userRoutes);
 app.use(errorHandler);
 

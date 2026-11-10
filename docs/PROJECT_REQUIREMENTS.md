@@ -36,6 +36,16 @@ Admin có thể:
 - Xóa người dùng.
 - Tìm kiếm người dùng.
 - Chọn và hiển thị hình ảnh của người dùng.
+- Xác thực quyền sở hữu email của người dùng mới bằng OTP 6 chữ số trước khi tạo hồ sơ.
+
+### Xác thực email OTP khi thêm người dùng
+
+- Chỉ Admin đã đăng nhập mới được yêu cầu và xác minh OTP.
+- OTP có 6 chữ số, sinh bằng `crypto`, được lưu dạng HMAC, hết hạn sau 5 phút, dùng một lần và tối đa 5 lần nhập sai.
+- Giới hạn yêu cầu gửi lại theo email tối thiểu 60 giây; email đã tồn tại không được cấp OTP để tạo trùng.
+- Backend chỉ cho tạo `users` sau khi xác minh email tương ứng; frontend không thể tự gửi trạng thái `verified` để bỏ qua bước này.
+- OTP không thuộc collection `users`; trạng thái tạm thời lưu trong `email_verifications` với TTL cleanup.
+- Gửi email qua Nodemailer/SMTP cấu hình bằng biến môi trường; không ghi OTP hoặc thông tin SMTP vào log/source/frontend.
 
 ## 5. Dữ liệu người dùng
 

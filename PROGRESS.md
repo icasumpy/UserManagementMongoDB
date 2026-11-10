@@ -30,3 +30,24 @@
 - Implemented: Admin-protected list/search/detail/create/update/delete API and responsive Expo user-management screen.
 - Implemented: bcrypt password hashing, unique normalized email index, strict four-field MongoDB documents, safe response projection, and validated/compressed Base64 profile photos.
 - Verified: frontend lint, TypeScript, Expo dependency check, Web/Android exports, existing Admin authentication tests, and Atlas CRUD integration (including unauthorized requests, validation errors, duplicate emails, bcrypt storage, exact document fields, image validation, and cleanup of temporary test records).
+
+## Cloudinary avatar storage integration
+
+- Implemented: Admin-authenticated multipart avatar upload and cleanup APIs using Cloudinary server-side signed uploads.
+- Implemented: JPEG/PNG/WebP validation by MIME and file signature, memory-only processing, and a 5 MB upload limit.
+- Implemented: frontend device image picking/compression and multipart requests on Expo Web and Android; avatar URLs are stored in the existing `hinhanh` field.
+- Implemented: replacement/deletion cleanup derives generated Cloudinary public IDs from HTTPS URLs; no additional MongoDB fields or collections.
+- Security: Cloudinary credentials remain backend environment variables and are not logged or exposed to the frontend. Local `.env` files remain ignored by Git.
+- Migrated: all 4 existing Base64 avatars to HTTPS Cloudinary URLs; conditional updates changed only `hinhanh`.
+- Verified against Atlas: 5 users, 0 Base64 avatar values, 5 Cloudinary URLs, and all 5 documents contain only `_id` plus the four approved business fields.
+- Verified: Cloudinary ping, signed upload and deletion; real authenticated API create/list/detail/update/avatar replacement/delete flow; temporary test user and Cloudinary assets were removed.
+- Verified: Admin auth tests and multipart API tests pass; TypeScript, lint, Expo Web and Android exports pass. Expo compatibility check still reports pre-existing SDK package version drift.
+
+## Email OTP verification before user creation
+
+- Implemented: Admin-protected `POST /api/auth/email/send-otp` and `POST /api/auth/email/verify-otp` using Nodemailer over SMTP.
+- Implemented: cryptographically random six-digit OTPs, email-bound HMAC storage, five-minute expiry, one-time verification, five-attempt lockout, and 60-second resend cooldown. MongoDB TTL cleanup is configured on the separate `email_verifications` collection; `users` remains unchanged.
+- Implemented: backend `POST /api/users` requires an unexpired server-side verified-email record and consumes it after successful creation. Concurrent duplicate creation remains protected by the unique email index.
+- Implemented: create-user form send/verify states, resend countdown, expiry/error feedback, and creation disabled until the current email is verified; changing the email clears client verification state.
+- Verified: auth/avatar/OTP backend tests, Atlas OTP state and temporary user flow, Expo TypeScript/lint and Web/Android exports pass.
+- Not verified: real SMTP delivery. No SMTP credentials or `EMAIL_OTP_HMAC_SECRET` are configured in the current local environment; the live OTP endpoint correctly returns HTTP 503 until configured. OTP integration tests use a mock mail transport and do not send real email.

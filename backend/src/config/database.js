@@ -14,8 +14,28 @@ function getDatabaseStatus() {
 
 function logConnectionError(error, context) {
   const errorName = typeof error?.name === 'string' ? error.name : 'Error';
-  const errorCode = typeof error?.code === 'number' ? `, code ${error.code}` : '';
-  console.error(`[mongodb] ${context} (${errorName}${errorCode}). Check Atlas network access, credentials, and database permissions. URI and credentials are omitted.`);
+  const errorCode = typeof error?.code === 'number' || typeof error?.code === 'string'
+    ? `, code ${error.code}`
+    : '';
+  const causes = new Set();
+  const addCause = (cause) => {
+    if (!cause || typeof cause !== 'object') return;
+    const name = typeof cause.name === 'string' ? cause.name : 'Error';
+    const code = typeof cause.code === 'number' || typeof cause.code === 'string'
+      ? `:${cause.code}`
+      : '';
+    const codeName = typeof cause.codeName === 'string' ? `:${cause.codeName}` : '';
+    causes.add(`${name}${code}${codeName}`);
+    if (cause.cause) addCause(cause.cause);
+  };
+
+  addCause(error?.cause);
+  if (error?.reason?.servers instanceof Map) {
+    for (const server of error.reason.servers.values()) addCause(server?.error);
+  }
+
+  const causeSummary = causes.size > 0 ? `; causes: ${[...causes].join(', ')}` : '';
+  console.error(`[mongodb] ${context} (${errorName}${errorCode}${causeSummary}). Check Atlas network access, credentials, and database permissions. URI and credentials are omitted.`);
 }
 
 async function ensureUsersCollection() {

@@ -15,7 +15,8 @@ import { TextField } from '../components/ui/TextField';
 import { colors, radius, shadow } from '../components/ui/theme';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { getAdminToken } from '../services/tokenStorage';
-import { createUser, deleteUser, listUsers, ManagedUser, updateUser, UserInput, UsersApiError } from '../services/usersApi';
+import { createUser, deleteUploadedAvatar, deleteUser, listUsers, ManagedUser, sendEmailOtp, updateUser, uploadAvatar, UploadedAvatar, UserInput, UsersApiError, verifyEmailOtp } from '../services/usersApi';
+import { PickedUserImage } from '../services/pickUserImage';
 
 export default function UsersScreen() {
   const { admin, logout } = useAdminAuth();
@@ -73,7 +74,7 @@ export default function UsersScreen() {
     await logout();
   }
 
-  async function handleSave(input: UserInput) {
+  async function handleSave(input: UserInput): Promise<boolean> {
     setSaving(true);
     setFormError('');
     try {
@@ -84,18 +85,71 @@ export default function UsersScreen() {
       setUsers((current) => formUser
         ? current.map((item) => item._id === saved._id ? saved : item)
         : [...current, saved].sort((left, right) => left.hoten.localeCompare(right.hoten, 'vi')));
-      setFormVisible(false);
       setMessage({ kind: 'success', text: formUser ? 'Đã cập nhật người dùng.' : 'Đã thêm người dùng mới.' });
       void load(query, true, false);
+      return true;
     } catch (error) {
       if (error instanceof UsersApiError && error.status === 401) {
         await logout();
         router.replace('/');
-        return;
+        return false;
       }
       setFormError(error instanceof Error ? error.message : 'Không thể lưu thông tin người dùng.');
+      return false;
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleUploadImage(image: PickedUserImage): Promise<UploadedAvatar> {
+    const token = await getAdminToken();
+    try {
+      return await uploadAvatar(image, token);
+    } catch (error) {
+      if (error instanceof UsersApiError && error.status === 401) {
+        await logout();
+        router.replace('/');
+      }
+      throw error;
+    }
+  }
+
+  async function handleDeleteUploadedImage(publicId: string): Promise<void> {
+    const token = await getAdminToken();
+    try {
+      await deleteUploadedAvatar(publicId, token);
+    } catch (error) {
+      if (error instanceof UsersApiError && error.status === 401) {
+        await logout();
+        router.replace('/');
+      }
+      throw error;
+    }
+  }
+
+  async function handleSendEmailOtp(email: string) {
+    const token = await getAdminToken();
+    try {
+      return await sendEmailOtp(email, token);
+    } catch (error) {
+      if (error instanceof UsersApiError && error.status === 401) {
+        await logout();
+        router.replace('/');
+      }
+      throw error;
+    }
+  }
+
+  async function handleVerifyEmailOtp(email: string, otp: string) {
+    const token = await getAdminToken();
+    try {
+      return await verifyEmailOtp(email, otp, token);
+    } catch (error) {
+      if (error instanceof UsersApiError && error.status === 401) {
+        await logout();
+        router.replace('/');
+      }
+      throw error;
     }
   }
 
@@ -153,8 +207,8 @@ export default function UsersScreen() {
           <View style={styles.content}>
             <View style={[styles.pageTitleRow, compact && styles.pageTitleRowCompact]}>
               <View style={styles.pageTitleCopy}>
-                <Text style={styles.pageTitle}>Người dùng</Text>
-                <Text style={styles.subtitle}>Quản lý hồ sơ và thông tin tài khoản trong một nơi.</Text>
+                <Text style={styles.pageTitle}>Lập trình di động 5</Text>
+                <Text style={styles.subtitle}>Phan Thị Khánh Ly with love</Text>
               </View>
               <Button icon="add" onPress={openCreate} title="Thêm người dùng" />
             </View>
@@ -219,7 +273,7 @@ export default function UsersScreen() {
                 </View>
               )}
             </View>
-            <Text style={styles.privacyNote}>Mật khẩu được mã hóa ở máy chủ và không hiển thị trong danh sách hoặc chi tiết hồ sơ.</Text>
+            <Text style={[styles.privacyNote, { textAlign: 'center', fontStyle: 'italic' }]}>Project by Khánh Ly 23IT157</Text>
           </View>
         </ScrollView>
       </View>
@@ -229,7 +283,11 @@ export default function UsersScreen() {
         busy={saving}
         error={formError}
         onClose={() => setFormVisible(false)}
-        onSave={(input) => void handleSave(input)}
+        onDeleteImage={handleDeleteUploadedImage}
+        onSendEmailOtp={handleSendEmailOtp}
+        onSave={handleSave}
+        onUploadImage={handleUploadImage}
+        onVerifyEmailOtp={handleVerifyEmailOtp}
         user={formUser}
         visible
       /> : null}
