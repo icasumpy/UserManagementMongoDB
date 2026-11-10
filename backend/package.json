@@ -1,0 +1,25 @@
+{
+  "name": "usermanagementmongodb-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Express API for UserManagementMongoDB",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "admin:hash": "node scripts/generate-admin-password-hash.js",
+    "test:auth": "node --test test/adminAuth.test.js"
+  },
+  "engines": {
+    "node": ">=26.0.0"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cookie": "^2.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.12.1"
+  }
+}
